@@ -2,15 +2,24 @@ package bank
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 
 	"github.com/FelipeMCassiano/constantia/internal/domain"
+)
+
+var (
+	NotSufficientBalanceError  = errors.New("not sufficient balance")
+	SenderDoesNotExistsError   = errors.New("sender does not exists")
+	RecieverDoesNotExistsError = errors.New("reciever does not exists")
+	NoneTransaction            = errors.New("none transaction yet")
 )
 
 type Repository interface {
 	CreateUser(user *domain.User) error
 	LoginUser(user *domain.User) (int, error)
 	CreateTransaction(transactionRequest *domain.Transaction) error
+	GetLastTransactions(id int) ([]domain.Transaction, error)
 }
 
 type repository struct {
@@ -79,18 +88,18 @@ func (r *repository) CreateTransaction(transactionRequest *domain.Transaction) e
 	senderDetails := tx.QueryRow("SELECT balance, CPF FROM users WHERE id=$1", transactionRequest.IDSender)
 
 	if senderDetails == nil {
-		return fmt.Errorf("sender does not exists")
+		return SenderDoesNotExistsError
 	}
 
 	senderDetails.Scan(&senderBalance, &senderCPF)
 
 	if senderBalance > transactionRequest.Value {
-		return fmt.Errorf("not suficient balance")
+		return NotSufficientBalanceError
 	}
 
 	recieverDetails := tx.QueryRow("SELECT balance FROM users WHERE CPF=$1", transactionRequest.CPFReciever)
 	if recieverDetails == nil {
-		return fmt.Errorf("reciever does not exists")
+		return RecieverDoesNotExistsError
 	}
 
 	recieverCPF := transactionRequest.CPFReciever
@@ -116,4 +125,39 @@ func (r *repository) CreateTransaction(transactionRequest *domain.Transaction) e
 	}
 
 	return tx.Commit()
+}
+
+func (r *repository) GetLastTransactions(id int) ([]domain.Transaction, error) {
+	tx, err := r.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+
+	defer tx.Rollback()
+
+	rows, err := tx.Query("SELECT id, sender, cpf_sender, cpf_reciever, value, created_at FROM transactions WHERE id=$1 ", id)
+	if err != nil {
+		return nil, err
+	}
+
+	if rows != nil {
+		defer rows.Close()
+
+		var lastTransactions []domain.Transaction
+
+		for rows.Next() {
+			var transaction domain.Transaction
+
+			if err := rows.Scan(&transaction.ID, &transaction.IDSender, &transaction.CPFSender, &transaction.CPFReciever, &transaction.Value, &transaction.CreatedAt); err != nil {
+				return nil, err
+			}
+
+			lastTransactions = append(lastTransactions, transaction)
+
+		}
+
+		return lastTransactions, nil
+	}
+
+	return nil, NoneTransaction
 }

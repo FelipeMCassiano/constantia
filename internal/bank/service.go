@@ -8,6 +8,8 @@ type Service interface {
 	LoginUser(user *domain.User) (int, error)
 
 	CreateTransaction(transactionRequest *domain.Transaction) error
+
+	GetLastTransaction(int) ([]domain.Transaction, error)
 }
 
 type service struct {
@@ -30,4 +32,8 @@ func (s *service) LoginUser(user *domain.User) (int, error) {
 
 func (s *service) CreateTransaction(transaction *domain.Transaction) error {
 	return s.repository.CreateTransaction(transaction)
+}
+
+func (s *service) GetLastTransaction(id int) ([]domain.Transaction, error) {
+	return s.repository.GetLastTransactions(id)
 }
